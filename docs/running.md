@@ -69,6 +69,11 @@ It can also be useful to pass additional environment variables from the command 
 
 These variables will be accessible (in sbt) to all of the projects that Scala Steward checks dependencies for.
 
+#### Repository specific credentials for coursier
+
+Newer sbt versions (>= 1.3.0) support the `coursier` dependency manager.
+In sbt you can set up repo specific credentials via `csrConfiguration ~= (_.addRepositoryAuthentication(<repo-id>, <authentication-config>)`. If present, the configured user, password and headers will also be used by scala steward. 
+
 #### Credentials using a credentials.sbt file
 
 If your projects require credentials, you can also provide global credentials in the `$HOME/.sbt/1.0/credentials.sbt` file. 

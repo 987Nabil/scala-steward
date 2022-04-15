@@ -32,7 +32,7 @@ sealed trait Resolver extends Product with Serializable {
 }
 
 object Resolver {
-  final case class Credentials(user: String, pass: String)
+  final case class Credentials(user: String, pass: String, headers: Seq[(String, String)])
   object Credentials {
     implicit val credentialsCodec: Codec[Credentials] =
       deriveCodec

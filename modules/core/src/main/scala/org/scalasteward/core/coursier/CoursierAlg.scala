@@ -134,7 +134,7 @@ object CoursierAlg {
     }
 
   private def toCoursierAuthentication(credentials: Credentials): Authentication =
-    Authentication(credentials.user, credentials.pass)
+    Authentication(credentials.user, credentials.pass).withHttpHeaders(credentials.headers)
 
   private def getParentDependency(project: Project): Option[coursier.Dependency] =
     project.parent.map { case (module, version) =>

@@ -18,6 +18,9 @@ package org.scalasteward.sbt.plugin
 
 import sbt.Keys._
 import sbt._
+import lmcoursier.CoursierConfiguration
+import lmcoursier.definitions.Authentication
+
 import scala.util.Try
 
 object StewardPlugin extends AutoPlugin {
@@ -36,6 +39,7 @@ object StewardPlugin extends AutoPlugin {
         val scalaBinaryVersionValue = scalaBinaryVersion.value
         val scalaVersionValue = scalaVersion.value
         val sbtCredentials = findCredentials.value
+        val csrCredentials = findCsrCredentials.value
 
         val libraryDeps = libraryDependencies.value
           .map(moduleId => toDependency(moduleId, scalaVersionValue, scalaBinaryVersionValue))
@@ -52,17 +56,25 @@ object StewardPlugin extends AutoPlugin {
           )
         val dependencies = libraryDeps ++ scalafixDeps
 
-        def getCredentials(url: URL): Option[Resolver.Credentials] =
+        def getCredentials(url: URL, repoId: String): Option[Resolver.Credentials] =
+          getCsrCredentials(repoId).orElse(getSbtCredentials(url))
+
+        def getSbtCredentials(url: URL): Option[Resolver.Credentials] =
           Try(Credentials.forHost(sbtCredentials, url.getHost)).toOption.flatten
-            .map(c => Resolver.Credentials(c.userName, c.passwd))
+            .map(c => Resolver.Credentials(c.userName, c.passwd, Nil))
+
+        def getCsrCredentials(repoId: String) =
+          csrCredentials.toMap
+            .get(repoId)
+            .map(c => Resolver.Credentials(c.user, c.password, c.headers.toList))
 
         val resolvers = fullResolvers.value.collect {
           case repo: MavenRepository if !repo.root.startsWith("file:") =>
-            val creds = getCredentials(new URL(repo.root))
+            val creds = getCredentials(new URL(repo.root), repo.name)
             Resolver.MavenRepository(repo.name, repo.root, creds)
           case repo: URLRepository =>
             val ivyPatterns = repo.patterns.ivyPatterns.mkString
-            val creds = getCredentials(new URL(ivyPatterns))
+            val creds = getCredentials(new URL(ivyPatterns), repo.name)
             Resolver.IvyRepository(repo.name, ivyPatterns, creds)
         }
 
@@ -96,6 +108,17 @@ object StewardPlugin extends AutoPlugin {
       }
     } catch {
       case _: ClassNotFoundException => Def.task(credentials.value)
+    }
+  }
+
+  lazy val findCsrCredentials: Def.Initialize[Task[Seq[(String, Authentication)]]] = Def.taskDyn {
+    try {
+      val allCredentials = TaskKey[CoursierConfiguration]("csrConfiguration").?
+      Def.task {
+        allCredentials.value.map(_.authenticationByRepositoryId).getOrElse(Nil)
+      }
+    } catch {
+      case _: ClassNotFoundException => Def.task(Nil)
     }
   }
 
@@ -160,10 +183,18 @@ object StewardPlugin extends AutoPlugin {
   }
 
   object Resolver {
-    final case class Credentials(user: String, pass: String) {
+    final case class Credentials(
+        user: String,
+        pass: String,
+        httpHeaders: List[(String, String)]
+    ) {
       def asJson: String =
         objToJson(
-          List("user" -> strToJson(user), "pass" -> strToJson(pass))
+          List(
+            "user" -> strToJson(user),
+            "pass" -> strToJson(pass),
+            "headers" -> kvsToJson(httpHeaders)
+          )
         )
     }
 
@@ -205,4 +236,7 @@ object StewardPlugin extends AutoPlugin {
 
   private def objToJson(obj: List[(String, String)]): String =
     obj.map { case (k, v) => s""""$k": $v""" }.mkString("{ ", ", ", " }")
+
+  private def kvsToJson(kvs: Seq[(String, String)]): String =
+    kvs.map { case (k, v) => s"""[ "$k", "$v" ]""" }.mkString("[ ", ", ", " ]")
 }
